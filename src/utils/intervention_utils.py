@@ -182,6 +182,7 @@ def function_vector_intervention(sentence, target, edit_layer, function_vector, 
 
     if all_layers:
         fvi_output = [perform_intervention(layer) for layer in range(1,model_config['n_layers']+1)]
+        fvi_output = fvi_output[-1]
     else:
         fvi_output = perform_intervention()
     
