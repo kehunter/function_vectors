@@ -118,8 +118,8 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1):
 
     return add_act
 
-def function_vector_intervention(sentence, target, edit_layer, function_vector, model, model_config, tokenizer, compute_nll=False,
-                                  generate_str=False, all_layers=False):
+def function_vector_intervention(sentence, target, edit_layer1, function_vector,  model, model_config, tokenizer, compute_nll=True,
+                                  generate_str=False, edit_layer2=None, function_vector2=None):
     """
     Runs the model on the sentence and adds the function_vector to the output of edit_layer as a model intervention, predicting a single token.
     Returns the output of the model with and without intervention.
@@ -144,7 +144,7 @@ def function_vector_intervention(sentence, target, edit_layer, function_vector, 
     original_pred_idx = len(inputs.input_ids.squeeze()) - 1
 
     if compute_nll:
-        target_completion = "".join(sentence + target)
+        target_completion = "".join(sentence + str(target))
         nll_inputs = tokenizer(target_completion, return_tensors='pt').to(device)
         nll_targets = nll_inputs.input_ids.clone()
         target_len = len(nll_targets.squeeze()) - len(inputs.input_ids.squeeze()) 
@@ -161,17 +161,14 @@ def function_vector_intervention(sentence, target, edit_layer, function_vector, 
         clean_output = model(**inputs).logits[:,-1,:]
 
     # Perform Intervention
-    if all_layers:
-        for layer in range(1,model_config['n_layers']+1):
-            intervention_fn = add_function_vector(layer, function_vector.reshape(1, model_config['resid_dim']), model.device)
-    else:
-        intervention_fn = add_function_vector(edit_layer, function_vector.reshape(1, model_config['resid_dim']), model.device)
-
+    intervention_fn = add_function_vector(edit_layer1, function_vector.reshape(1, model_config['resid_dim']), model.device)
     with TraceDict(model, layers=model_config['layer_hook_names'], edit_output=intervention_fn):     
         if compute_nll:
             output = model(**nll_inputs, labels=nll_targets)
             intervention_nll = output.loss.item()
-            intervention_output = output.logits[:,original_pred_idx,:]
+            # intervention_output = output.logits[:,original_pred_idx,:]
+            intervention_output = model(**inputs).logits[:,-1,:] # batch_size x n_tokens x vocab_size, only want last token prediction
+
         elif generate_str:
             output = model.generate(inputs.input_ids, top_p=0.9, temperature=0.1,
                                     max_new_tokens=MAX_NEW_TOKENS)
@@ -182,7 +179,30 @@ def function_vector_intervention(sentence, target, edit_layer, function_vector, 
     fvi_output = (clean_output, intervention_output)
     if compute_nll:
         fvi_output += (clean_nll, intervention_nll)
-    
+
+
+    # extra layer processing
+    if edit_layer2 != None:
+        intervention_fn = add_function_vector(edit_layer2, function_vector2.reshape(1, model_config['resid_dim']), model.device)
+        with TraceDict(model, layers=model_config['layer_hook_names'], edit_output=intervention_fn):     
+            if compute_nll:
+                output = model(**nll_inputs, labels=nll_targets)
+                intervention_nll1 = output.loss.item()
+                # intervention_output = output.logits[:,original_pred_idx,:]
+                intervention_output1 = model(**inputs).logits[:,-1,:] # batch_size x n_tokens x vocab_size, only want last token prediction
+
+            elif generate_str:
+                output = model.generate(inputs.input_ids, top_p=0.9, temperature=0.1,
+                                        max_new_tokens=MAX_NEW_TOKENS)
+                intervention_output1 = tokenizer.decode(output.squeeze()[-MAX_NEW_TOKENS:])
+            else:
+                intervention_output1 = model(**inputs).logits[:,-1,:] # batch_size x n_tokens x vocab_size, only want last token prediction
+        
+        fvi_output1 = (clean_output, intervention_output + intervention_output1)
+        if compute_nll:
+            fvi_output1 += (clean_nll, intervention_nll+intervention_nll1)
+        fvi_output = fvi_output1
+
     return fvi_output
 
 
