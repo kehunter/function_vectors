@@ -160,31 +160,28 @@ def function_vector_intervention(sentence, target, edit_layer, function_vector, 
     else:
         clean_output = model(**inputs).logits[:,-1,:]
 
-    def perform_intervention(edit_layer=edit_layer):
-        # Perform Intervention
-        intervention_fn = add_function_vector(edit_layer, function_vector.reshape(1, model_config['resid_dim']), model.device)
-        with TraceDict(model, layers=model_config['layer_hook_names'], edit_output=intervention_fn):     
-            if compute_nll:
-                output = model(**nll_inputs, labels=nll_targets)
-                intervention_nll = output.loss.item()
-                intervention_output = output.logits[:,original_pred_idx,:]
-            elif generate_str:
-                output = model.generate(inputs.input_ids, top_p=0.9, temperature=0.1,
-                                        max_new_tokens=MAX_NEW_TOKENS)
-                intervention_output = tokenizer.decode(output.squeeze()[-MAX_NEW_TOKENS:])
-            else:
-                intervention_output = model(**inputs).logits[:,-1,:] # batch_size x n_tokens x vocab_size, only want last token prediction
-        
-        fvi_output = (clean_output, intervention_output)
-        if compute_nll:
-            fvi_output += (clean_nll, intervention_nll)
-        return fvi_output
-
+    # Perform Intervention
     if all_layers:
-        fvi_output = [perform_intervention(layer) for layer in range(1,model_config['n_layers']+1)]
-        fvi_output = fvi_output[-1]
+        for layer in range(1,model_config['n_layers']+1):
+            intervention_fn = add_function_vector(layer, function_vector.reshape(1, model_config['resid_dim']), model.device)
     else:
-        fvi_output = perform_intervention()
+        intervention_fn = add_function_vector(edit_layer, function_vector.reshape(1, model_config['resid_dim']), model.device)
+
+    with TraceDict(model, layers=model_config['layer_hook_names'], edit_output=intervention_fn):     
+        if compute_nll:
+            output = model(**nll_inputs, labels=nll_targets)
+            intervention_nll = output.loss.item()
+            intervention_output = output.logits[:,original_pred_idx,:]
+        elif generate_str:
+            output = model.generate(inputs.input_ids, top_p=0.9, temperature=0.1,
+                                    max_new_tokens=MAX_NEW_TOKENS)
+            intervention_output = tokenizer.decode(output.squeeze()[-MAX_NEW_TOKENS:])
+        else:
+            intervention_output = model(**inputs).logits[:,-1,:] # batch_size x n_tokens x vocab_size, only want last token prediction
+    
+    fvi_output = (clean_output, intervention_output)
+    if compute_nll:
+        fvi_output += (clean_nll, intervention_nll)
     
     return fvi_output
 
