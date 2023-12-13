@@ -92,7 +92,7 @@ def replace_activation_w_avg(layer_head_token_pairs, avg_activations, model, mod
 
     return rep_act
 
-def add_function_vector(edit_layer, fv_vector, device, idx=-1):
+def add_function_vector(edit_layer, fv_vector, device, idx=-1, normalized=False):
     """
     Adds a vector to the output of a specified layer in the model
 
@@ -105,11 +105,17 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1):
     Returns:
     add_act: a fuction specifying how to add a function vector to a layer's output hidden state
     """
+
     def add_act(output, layer_name):
         current_layer = int(layer_name.split(".")[2])
         if current_layer == edit_layer:
             if isinstance(output, tuple):
-                output[0][:, idx] += fv_vector.to(device)
+                if normalized:
+                    output_norm = torch.norm(output[0][:, idx], p=2)
+                    fv_norm = torch.norm(fv_vector.to(device), p=2)
+                    output[0][:, idx] =  output_norm  * ((output[0][:, idx]) / output_norm +  (fv_vector.to(device)/ fv_norm) )
+                else:
+                    output[0][:, idx] += fv_vector.to(device)
                 return output
             else:
                 return output
@@ -119,7 +125,7 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1):
     return add_act
 
 def function_vector_intervention(sentence, target, edit_layer1, function_vector,  model, model_config, tokenizer, compute_nll=True,
-                                  generate_str=False, edit_layer2=None, function_vector2=None):
+                                  generate_str=False, edit_layer2=None, function_vector2=None, normalized=False):
     """
     Runs the model on the sentence and adds the function_vector to the output of edit_layer as a model intervention, predicting a single token.
     Returns the output of the model with and without intervention.
@@ -161,7 +167,9 @@ def function_vector_intervention(sentence, target, edit_layer1, function_vector,
         clean_output = model(**inputs).logits[:,-1,:]
 
     # Perform Intervention
-    intervention_fn = add_function_vector(edit_layer1, function_vector.reshape(1, model_config['resid_dim']), model.device)
+    # ADDED normalized ##
+    intervention_fn = add_function_vector(edit_layer1, function_vector.reshape(1, model_config['resid_dim']), model.device, normalized=normalized)
+    ###########
     with TraceDict(model, layers=model_config['layer_hook_names'], edit_output=intervention_fn):     
         if compute_nll:
             output = model(**nll_inputs, labels=nll_targets)
