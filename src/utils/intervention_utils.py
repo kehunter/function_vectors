@@ -107,7 +107,7 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1, normalized=False)
     """
 
     # ADDED:
-    scale = 2
+    scale = 0.6
 
     def add_act(output, layer_name):
         current_layer = int(layer_name.split(".")[2])
@@ -116,7 +116,7 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1, normalized=False)
                 if normalized:
                     output_norm = torch.norm(output[0][:, idx], p=2)
                     fv_norm = torch.norm(fv_vector.to(device), p=2)
-                    output[0][:, idx] =  output_norm  * ((output[0][:, idx]) / output_norm +  scale * (fv_vector.to(device)/ fv_norm) )
+                    output[0][:, idx] =  output_norm  * ((1-scale)*(output[0][:, idx]) / output_norm +  scale * (fv_vector.to(device)/ fv_norm) )
                 else:
                     output[0][:, idx] += fv_vector.to(device)
                 return output
