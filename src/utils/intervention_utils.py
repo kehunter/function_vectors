@@ -106,9 +106,6 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1, normalized=False)
     add_act: a fuction specifying how to add a function vector to a layer's output hidden state
     """
 
-    # ADDED:
-    constant = 2000
-
     def add_act(output, layer_name):
         current_layer = int(layer_name.split(".")[2])
         if current_layer == edit_layer:
@@ -116,7 +113,7 @@ def add_function_vector(edit_layer, fv_vector, device, idx=-1, normalized=False)
                 if normalized:
                     output_norm = torch.norm(output[0][:, idx], p=2)
                     fv_norm = torch.norm(fv_vector.to(device), p=2)
-                    output[0][:, idx] =  constant  * ((output[0][:, idx]) / output_norm +  (fv_vector.to(device)/ fv_norm) )
+                    output[0][:, idx] =  output_norm * ((output[0][:, idx]) / output_norm +  (fv_vector.to(device)/ fv_norm) )
                 else:
                     output[0][:, idx] += fv_vector.to(device)
                 return output
